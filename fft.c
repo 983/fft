@@ -1,147 +1,112 @@
 #include "fft.h"
 
-#include <assert.h>
+#include <math.h>
 #include <stdlib.h>
 
-/* get index of highest set bit in x */
-static size_t fft_bitlength(size_t x){
-    size_t n = 0;
-    for (; x; x >>= 1) n++;
-    return n;
-}
-
-static size_t fft_bitreverse(size_t x, size_t n){
-    size_t i, result = 0;
+static int fft_bitreverse(int x, int n){
+    int i, result = 0;
     for (i = 0; i < n; i++){
-        result = (result << 1) | (x & 1);
-        x >>= 1;
+        result = (result << 1) | ((x >> i) & 1);
     }
     return result;
 }
 
-void fft_init(struct fft *f, size_t n){
-    size_t i, log2_n = fft_bitlength(n) - 1;
+static int fft_bitlength(int x){
+    int n = 0;
+    for (; x; x >>= 1) n++;
+    return n;
+}
 
-    f->n = n;
-    f->cos_sin = (fft_complex*)malloc(sizeof(*f->cos_sin)*n/2);
-    f->reversed = (size_t*)malloc(sizeof(*f->reversed)*n);
+void fft_init(struct FFT *fft, int n){
+    fft->c = (float*)malloc(n*sizeof(*fft->c));
+    fft->s = (float*)malloc(n*sizeof(*fft->s));
+    fft->reversed = (int*)malloc(n*sizeof(*fft->reversed));
+    fft->n = n;
 
-    assert("n must be exact power of two" && n == ((size_t)1) << log2_n);
+    const float pi = 3.14159265358979f;
 
-    for (i = 0; i < n/2; i++){
-        f->cos_sin[i] = fftc_polar(-2.0*FFT_PI/n*i);
-    }
-
+    int i, log2_n = fft_bitlength(n) - 1;
     for (i = 0; i < n; i++){
-        f->reversed[i] = fft_bitreverse(i, log2_n);
+        float t = -2.0f*pi/n*i;
+        fft->c[i] = cos(t);
+        fft->s[i] = sin(t);
+        fft->reversed[i] = fft_bitreverse(i, log2_n);
     }
 }
 
-void fft_free(struct fft *f){
-    free(f->cos_sin);
-    free(f->reversed);
+void fft_free(struct FFT *fft){
+    free(fft->reversed);
+    free(fft->c);
+    free(fft->s);
 }
 
-static void fft_butterfly_swap(struct fft *f, fft_complex *values){
-    size_t i, j, n = f->n;
-
-    for (i = 0; i < n; i++){
-        j = f->reversed[i];
+static void fft_butterfly_swap(struct FFT *fft, float *re, float *im){
+    int i;
+    for (i = 0; i < fft->n; i++){
+        int j = fft->reversed[i];
         if (i < j){
-            fft_complex temp = values[i];
-            values[i] = values[j];
-            values[j] = temp;
+            float temp;
+
+            temp = re[i];
+            re[i] = re[j];
+            re[j] = temp;
+
+            temp = im[i];
+            im[i] = im[j];
+            im[j] = temp;
         }
     }
 }
 
-void fft_fft(struct fft *f, fft_complex *values){
-    size_t i, block_size, block_offset, n = f->n;
-
-    /* fourier transform of a single element is the same element */
-    if (n < 2) return;
-
-    fft_butterfly_swap(f, values);
-
-    for (i = 0; i < n; i += 2){
-        fft_complex a = values[i + 0];
-        fft_complex b = values[i + 1];
-        values[i + 0] = fftc_add(a, b);
-        values[i + 1] = fftc_sub(a, b);
-    }
-
-    if (n < 4) return;
-
-    for (i = 0; i < n; i += 4){
-        fft_complex a = values[i + 0];
-        fft_complex c = values[i + 1];
-        fft_complex b = values[i + 2];
-        fft_complex d = values[i + 3];
-        d = fftc(d.imag, d.real);
-        values[i + 0] = fftc_add(a, b);
-        values[i + 1] = fftc_sub(c, d);
-        values[i + 2] = fftc_sub(a, b);
-        values[i + 3] = fftc_add(c, d);
-    }
-
-    for (block_size = 8; block_size <= n; block_size *= 2){
-        size_t cos_sin_stride = n/block_size;
+void fft_fft(struct FFT *fft, float *re, float *im){
+    int n = fft->n;
+    float *c = fft->c;
+    float *s = fft->s;
+    fft_butterfly_swap(fft, re, im);
+    int block_size, block_offset, i;
+    for (block_size = 2; block_size <= n; block_size *= 2){
+        int cos_sin_stride = n/block_size;
         for (block_offset = 0; block_offset < n; block_offset += block_size){
             for (i = 0; i < block_size/2; i++){
-                fft_complex c = f->cos_sin[i*cos_sin_stride];
-                fft_complex a = values[block_offset + i];
-                fft_complex b = values[block_offset + i + block_size/2];
-                fft_complex d = fftc_mul(b, c);
-                values[block_offset + i               ] = fftc_add(a, d);
-                values[block_offset + i + block_size/2] = fftc_sub(a, d);
+                float ar = re[block_offset + i];
+                float ai = im[block_offset + i];
+                float br = re[block_offset + i + block_size/2];
+                float bi = im[block_offset + i + block_size/2];
+                float cr = c[i*cos_sin_stride];
+                float ci = s[i*cos_sin_stride];
+                float dr = br*cr - bi*ci;
+                float di = br*ci + bi*cr;
+                re[block_offset + i               ] = ar + dr;
+                im[block_offset + i               ] = ai + di;
+                re[block_offset + i + block_size/2] = ar - dr;
+                im[block_offset + i + block_size/2] = ai - di;
             }
         }
     }
 }
 
-/* there are only two differences to fft_fft */
-/* first, cos_sin is complex conjugated      */
-/* second, the result is scaled by `1.0/n`   */
-void fft_ifft(struct fft *f, fft_complex *values){
-    size_t i, block_size, block_offset, n = f->n;
-
-    if (n < 2) return;
-
-    fft_butterfly_swap(f, values);
-
-    for (i = 0; i < n; i++) values[i] = fftc_muls(values[i], 1.0/n);
-
-    for (i = 0; i < n; i += 2){
-        fft_complex a = values[i + 0];
-        fft_complex b = values[i + 1];
-        values[i + 0] = fftc_add(a, b);
-        values[i + 1] = fftc_sub(a, b);
-    }
-
-    if (n < 4) return;
-
-    for (i = 0; i < n; i += 4){
-        fft_complex a = values[i + 0];
-        fft_complex c = values[i + 1];
-        fft_complex b = values[i + 2];
-        fft_complex d = values[i + 3];
-        d = fftc(d.imag, -d.real);
-        values[i + 0] = fftc_add(a, b);
-        values[i + 1] = fftc_sub(c, d);
-        values[i + 2] = fftc_sub(a, b);
-        values[i + 3] = fftc_add(c, d);
-    }
-
-    for (block_size = 8; block_size <= n; block_size *= 2){
-        size_t cos_sin_stride = n/block_size;
+void fft_ifft(struct FFT *fft, float *re, float *im){
+    int n = fft->n;
+    float *c = fft->c;
+    float *s = fft->s;
+    fft_butterfly_swap(fft, re, im);
+    int block_size, block_offset, i;
+    for (block_size = 2; block_size <= n; block_size *= 2){
+        int cos_sin_stride = n/block_size;
         for (block_offset = 0; block_offset < n; block_offset += block_size){
             for (i = 0; i < block_size/2; i++){
-                fft_complex c = fftc_conj(f->cos_sin[i*cos_sin_stride]);
-                fft_complex a = values[block_offset + i];
-                fft_complex b = values[block_offset + i + block_size/2];
-                fft_complex d = fftc_mul(b, c);
-                values[block_offset + i               ] = fftc_add(a, d);
-                values[block_offset + i + block_size/2] = fftc_sub(a, d);
+                float ar = re[block_offset + i];
+                float ai = im[block_offset + i];
+                float br = re[block_offset + i + block_size/2];
+                float bi = im[block_offset + i + block_size/2];
+                float cr = c[i*cos_sin_stride];
+                float ci = -s[i*cos_sin_stride];
+                float dr = br*cr - bi*ci;
+                float di = br*ci + bi*cr;
+                re[block_offset + i               ] = ar + dr;
+                im[block_offset + i               ] = ai + di;
+                re[block_offset + i + block_size/2] = ar - dr;
+                im[block_offset + i + block_size/2] = ai - di;
             }
         }
     }

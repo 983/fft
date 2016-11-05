@@ -1,19 +1,14 @@
-#ifndef FFT_H
-#define FFT_H
+#ifndef FFT_INCLUDED
+#define FFT_INCLUDED
 
-#include "fft_complex.h"
-
-#include <stddef.h>
-
-struct fft {
-    fft_complex *cos_sin;
-    size_t *reversed;
-    size_t n;
+struct FFT {
+    int n, *reversed;
+    float *c, *s;
 };
 
-void fft_init(struct fft *f, size_t n);
-void fft_free(struct fft *f);
-void fft_fft (struct fft *f, fft_complex *values);
-void fft_ifft(struct fft *f, fft_complex *values);
+void fft_init(struct FFT *fft, int n);
+void fft_free(struct FFT *fft);
+void fft_fft(struct FFT *fft, float *re, float *im);
+void fft_ifft(struct FFT *fft, float *re, float *im);
 
 #endif

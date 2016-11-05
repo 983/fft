@@ -1,2 +1,2 @@
-all:
-	gcc fft_complex.c fft.c test.c -o test -Wall -Wextra -ansi -pedantic -O2 -lm
+main:
+	gcc main.c fft.c -o main -lm -O3

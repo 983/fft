@@ -4,53 +4,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-float randf(){
-    return rand()/(float)RAND_MAX;
-}
-
-int main(){
-    size_t i, n = 512;
-
+int calculate_shift(float *re, float *im, float *re_shifted, float *im_shifted, int n){
     struct FFT fft[1];
-    fft_init(fft, n*2);
-
-    float re[n*2];
-    float im[n*2];
-    float re_shifted[n*2];
-    float im_shifted[n*2];
-
-    for (i = 0; i < n; i++){
-        re[i] = randf();
-        im[i] = 0.0f;
-
-        re[i + n] = 0.0f;
-        im[i + n] = 0.0f;
-    }
-
-    size_t shift = 13;
-
-    for (i = 0; i < n; i++){
-        size_t j = (i + shift) % n;
-        re_shifted[i] = re[j];
-        im_shifted[i] = im[j];
-
-        re_shifted[i + n] = 0.0f;
-        im_shifted[i + n] = 0.0f;
-    }
+    fft_init(fft, n);
 
     fft_fft(fft, re, im);
     fft_fft(fft, re_shifted, im_shifted);
 
-    for (i = 0; i < n*2; i++){
+    int i;
+    for (i = 0; i < n; i++){
         re[i] *= re_shifted[i];
         im[i] *= im_shifted[i];
     }
 
     fft_ifft(fft, re, im);
 
-    size_t index_max = -1;
+    int index_max = -1;
     float max_value = -1.0f;
-    for (i = 1; i < n*2; i++){
+    for (i = 1; i < n; i++){
         float abs_value = re[i];
 
         if (abs_value < 0.0f){
@@ -63,9 +34,45 @@ int main(){
         }
     }
 
-    printf("index: %i\n", (int)index_max);
-
     fft_free(fft);
+
+    return index_max;
+}
+
+float randf(){
+    return rand()/(float)RAND_MAX;
+}
+
+int main(){
+    int i, n = 512;
+
+    float re[n*2];
+    float im[n*2];
+    float re_shifted[n*2];
+    float im_shifted[n*2];
+
+    /* initialize an array with random values and padded zeros */
+    for (i = 0; i < n; i++){
+        re[i] = randf();
+        im[i] = 0.0f;
+
+        re[i + n] = 0.0f;
+        im[i + n] = 0.0f;
+    }
+
+    int shift = 13;
+
+    /* create a shifted signal */
+    for (i = 0; i < n; i++){
+        int j = (i + shift) % n;
+        re_shifted[i] = re[j];
+        im_shifted[i] = im[j];
+
+        re_shifted[i + n] = 0.0f;
+        im_shifted[i + n] = 0.0f;
+    }
+
+    printf("signal is shifted by %i\n", calculate_shift(re, im, re_shifted, im_shifted, n*2));
 
     return 0;
 }

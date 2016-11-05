@@ -40,9 +40,9 @@ void fft_free(struct FFT *fft){
     free(fft->s);
 }
 
-static void fft_butterfly_swap(struct FFT *fft, float *re, float *im){
-    int i;
-    for (i = 0; i < fft->n; i++){
+static void fft_swap_and_first_pass(struct FFT *fft, float *re, float *im){
+    int i, n = fft->n;
+    for (i = 0; i < n; i++){
         int j = fft->reversed[i];
         if (i < j){
             float temp;
@@ -56,15 +56,50 @@ static void fft_butterfly_swap(struct FFT *fft, float *re, float *im){
             im[j] = temp;
         }
     }
+
+    if (n >= 2){
+        for (i = 0; i < n; i += 2){
+            float ar = re[i + 0];
+            float ai = im[i + 0];
+            float br = re[i + 1];
+            float bi = im[i + 1];
+            re[i + 0] = ar + br;
+            im[i + 0] = ai + bi;
+            re[i + 1] = ar - br;
+            im[i + 1] = ai - bi;
+        }
+    }
 }
 
 void fft_fft(struct FFT *fft, float *re, float *im){
-    int n = fft->n;
+    int block_size, block_offset, i, n = fft->n;
     float *c = fft->c;
     float *s = fft->s;
-    fft_butterfly_swap(fft, re, im);
-    int block_size, block_offset, i;
-    for (block_size = 2; block_size <= n; block_size *= 2){
+
+    fft_swap_and_first_pass(fft, re, im);
+
+    if (n >= 4){
+        for (i = 0; i < n; i += 4){
+            float ar = re[i + 0];
+            float ai = im[i + 0];
+            float cr = re[i + 1];
+            float ci = im[i + 1];
+            float br = re[i + 2];
+            float bi = im[i + 2];
+            float di = re[i + 3];
+            float dr = im[i + 3];
+            re[i + 0] = ar + br;
+            im[i + 0] = ai + bi;
+            re[i + 1] = cr - dr;
+            im[i + 1] = ci - di;
+            re[i + 2] = ar - br;
+            im[i + 2] = ai - bi;
+            re[i + 3] = cr + dr;
+            im[i + 3] = ci + di;
+        }
+    }
+
+    for (block_size = 8; block_size <= n; block_size *= 2){
         int cos_sin_stride = n/block_size;
         for (block_offset = 0; block_offset < n; block_offset += block_size){
             for (i = 0; i < block_size/2; i++){
@@ -86,12 +121,34 @@ void fft_fft(struct FFT *fft, float *re, float *im){
 }
 
 void fft_ifft(struct FFT *fft, float *re, float *im){
-    int n = fft->n;
+    int block_size, block_offset, i, n = fft->n;
     float *c = fft->c;
     float *s = fft->s;
-    fft_butterfly_swap(fft, re, im);
-    int block_size, block_offset, i;
-    for (block_size = 2; block_size <= n; block_size *= 2){
+
+    fft_swap_and_first_pass(fft, re, im);
+
+    if (n >= 4){
+        for (i = 0; i < n; i += 4){
+            float ar = re[i + 0];
+            float ai = im[i + 0];
+            float cr = re[i + 1];
+            float ci = im[i + 1];
+            float br = re[i + 2];
+            float bi = im[i + 2];
+            float di = -re[i + 3];
+            float dr = im[i + 3];
+            re[i + 0] = ar + br;
+            im[i + 0] = ai + bi;
+            re[i + 1] = cr - dr;
+            im[i + 1] = ci - di;
+            re[i + 2] = ar - br;
+            im[i + 2] = ai - bi;
+            re[i + 3] = cr + dr;
+            im[i + 3] = ci + di;
+        }
+    }
+
+    for (block_size = 8; block_size <= n; block_size *= 2){
         int cos_sin_stride = n/block_size;
         for (block_offset = 0; block_offset < n; block_offset += block_size){
             for (i = 0; i < block_size/2; i++){
@@ -109,5 +166,11 @@ void fft_ifft(struct FFT *fft, float *re, float *im){
                 im[block_offset + i + block_size/2] = ai - di;
             }
         }
+    }
+
+    float scale = 1.0f/n;
+    for (i = 0; i < n; i++){
+        re[i] *= scale;
+        im[i] *= scale;
     }
 }

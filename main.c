@@ -21,7 +21,7 @@ int calculate_shift(float *re, float *im, float *re_shifted, float *im_shifted, 
 
     int index_max = -1;
     float max_value = -1.0f;
-    for (i = 1; i < n; i++){
+    for (i = 0; i < n; i++){
         float abs_value = re[i];
 
         if (abs_value < 0.0f){

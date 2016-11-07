@@ -10,28 +10,49 @@ float my_abs(float x){
     return x < 0.0f ? -x : x;
 }
 
-float randf(){
-    return rand()/(float)RAND_MAX;
+float randf() {
+    do {
+        float x = rand()*2.0f/RAND_MAX - 1.0f;
+        float y = rand()*2.0f/RAND_MAX - 1.0f;
+        float r = x*x + y*y;
+        if (r == 0.0f || r > 1.0f) continue;
+        return x*sqrt(-2.0*log(r)/r);
+    } while(1);
+}
+
+void reverse(float *a, int n){
+    for (int i = 0; i < n/2; i++){
+        int j = n - 1 - i;
+        float temp = a[i];
+        a[i] = a[j];
+        a[j] = temp;
+    }
 }
 
 int calculate_shift(float *re, float *im, float *re_shifted, float *im_shifted, int n){
     struct FFT fft[1];
     fft_init(fft, n);
 
+    reverse(re_shifted, n/2);
+    reverse(im_shifted, n/2);
+
     fft_fft(fft, re, im);
     fft_fft(fft, re_shifted, im_shifted);
 
     int i;
     for (i = 0; i < n; i++){
-        re[i] *= re_shifted[i];
-        im[i] *= im_shifted[i];
+        float real = re[i]*re_shifted[i] - im[i]*im_shifted[i];
+        float imag = im[i]*re_shifted[i] + re[i]*im_shifted[i];
+
+        re[i] = real;
+        im[i] = imag;
     }
 
     fft_ifft(fft, re, im);
 
     int index_max = -1;
     float max_value = -1.0f;
-    for (i = 0; i < n/2; i++){
+    for (i = 0; i < n; i++){
         float abs_value = my_abs(re[i]);
 
         if (abs_value > max_value){
@@ -42,7 +63,7 @@ int calculate_shift(float *re, float *im, float *re_shifted, float *im_shifted, 
 
     fft_free(fft);
 
-    return index_max;
+    return (n - 1 - index_max)%(n/2);
 }
 
 void test_shift(int shift){
@@ -64,7 +85,7 @@ void test_shift(int shift){
 
     /* create a shifted signal */
     for (i = 0; i < n; i++){
-        int j = (i + shift) % n;
+        int j = (i - shift + n) % n;
         re_shifted[i] = re[j];
         im_shifted[i] = im[j];
 
@@ -74,7 +95,10 @@ void test_shift(int shift){
 
     int calculated_shift = calculate_shift(re, im, re_shifted, im_shifted, n*2);
 
-    assert(shift == calculated_shift);
+    if (shift != calculated_shift){
+        printf("ERROR: Expected shift %i, but got %i\n", shift, calculated_shift);
+        exit(-1);
+    }
 
     free(re);
     free(im);
@@ -139,7 +163,7 @@ void test_frequency(int frequency, int n){
 
 int main(){
 
-    for (int shift = 0; shift < 100; shift++){
+    for (int shift = 0; shift < 512; shift++){
         test_shift(shift);
     }
 
